@@ -1,11 +1,18 @@
 app "advent-of-code"
-    packages { pf: "https://github.com/roc-lang/basic-cli/releases/download/0.6.2/c7T4Hp8bAdWz3r9ZrhboBzibCjJag8d0IP_ljb42yVc.tar.br" }
+    packages {
+        pf: "https://github.com/roc-lang/basic-cli/releases/download/0.6.2/c7T4Hp8bAdWz3r9ZrhboBzibCjJag8d0IP_ljb42yVc.tar.br",
+        parser: "https://github.com/lukewilliamboswell/roc-parser/releases/download/0.2.0/dJQSsSmorujhiPNIvJKlQoI92RFIG_JQwUfIxZsCSwE.tar.br",
+    }
     imports [
         pf.Stdout,
         pf.Task.{ Task },
+        parser.Core.{ sepBy, const, keep, skip, ignore, map, many },
+        parser.String.{ RawStr, parseStr, codeunit, string, digits, oneOf },
         "../../inputs/day2.txt" as inputFile : Str,
     ]
     provides [main] to pf
+
+Parser a : Core.Parser RawStr a
 
 main : Task {} *
 main =
@@ -37,7 +44,7 @@ validGameIds = \input ->
     input
     |> Str.split "\n"
     |> List.dropIf Str.isEmpty
-    |> List.keepOks parseGame
+    |> List.keepOks (\str -> parseStr gameParser str)
     |> List.keepIf (\game -> isSummaryValid (summarizeGame game))
     |> List.map .id
 
@@ -47,65 +54,45 @@ isSummaryValid = \summary ->
     && (summary.green <= 13)
     && (summary.blue <= 14)
 
-parseGame : Str -> Result Game [InvalidColor, InvalidNumStr, NotTwoParts]
-parseGame = \str ->
-    when Str.split str ":" is
-        [gameInfo, rounds] ->
-            parsedId <- parseGameId gameInfo |> Result.try
-            parsedRounds <- parseRounds rounds |> Result.try
-            Ok {
-                id: parsedId,
-                rounds: parsedRounds,
-            }
+gameParser : Parser Game
+gameParser =
+    const (\id -> \rounds -> { id, rounds })
+    |> keep gameIdParser
+    |> skip (codeunit ':')
+    |> keep (sepBy roundParser (codeunit ';'))
 
-        _ ->
-            Err NotTwoParts
+gameIdParser : Parser Nat
+gameIdParser =
+    const (\id -> id)
+    |> skip (string "Game")
+    |> skip spaces
+    |> keep digits
+    |> skip spaces
 
-parseGameId : Str -> Result Nat [InvalidNumStr, NotTwoParts]
-parseGameId = \str ->
-    words =
-        str
-        |> Str.split " "
-        |> List.dropIf Str.isEmpty
+roundParser : Parser Round
+roundParser =
+    colorCountParser
+    |> sepBy (codeunit ',')
 
-    when words is
-        [_, id] -> Str.toNat id
-        _ -> Err NotTwoParts
+colorCountParser : Parser ColorCount
+colorCountParser =
+    const (\count -> \color -> (count, color))
+    |> skip spaces
+    |> keep digits
+    |> skip spaces
+    |> keep colorParser
+    |> skip spaces
 
-parseRounds : Str -> Result (List Round) [InvalidColor, InvalidNumStr, NotTwoParts]
-parseRounds = \str ->
-    str
-    |> Str.split ";"
-    |> List.mapTry parseRound
+colorParser : Parser Color
+colorParser =
+    oneOf [
+        string "red" |> map \_ -> Red,
+        string "green" |> map \_ -> Green,
+        string "blue" |> map \_ -> Blue,
+    ]
 
-parseRound : Str -> Result Round [InvalidColor, InvalidNumStr, NotTwoParts]
-parseRound = \str ->
-    str
-    |> Str.split ","
-    |> List.mapTry parseColorCount
-
-parseColorCount : Str -> Result ColorCount [InvalidColor, InvalidNumStr, NotTwoParts]
-parseColorCount = \str ->
-    words =
-        str
-        |> Str.split " "
-        |> List.dropIf Str.isEmpty
-
-    when words is
-        [count, color] ->
-            parsedCount <- Str.toNat count |> Result.try
-            parsedColor <- parseColor color |> Result.try
-            Ok (parsedCount, parsedColor)
-
-        _ -> Err NotTwoParts
-
-parseColor : Str -> Result Color [InvalidColor]
-parseColor = \word ->
-    when word is
-        "red" -> Ok Red
-        "green" -> Ok Green
-        "blue" -> Ok Blue
-        _ -> Err InvalidColor
+spaces : Parser {}
+spaces = ignore (many (codeunit ' '))
 
 summarizeGame : Game -> Summary
 summarizeGame = \game ->

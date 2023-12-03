@@ -3,7 +3,7 @@ app "advent-of-code"
     imports [
         pf.Stdout,
         pf.Task.{ Task },
-        "../inputs/day1.txt" as inputFile : Str,
+        "../../inputs/day1.txt" as inputFile : Str,
     ]
     provides [main] to pf
 

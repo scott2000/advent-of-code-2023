@@ -19,14 +19,10 @@ solution = \input ->
     input
     |> Str.split "\n"
     |> List.dropIf Str.isEmpty
-    |> List.keepOks parseNum
+    |> List.map Str.toUtf8
+    |> List.map parseDigits
+    |> List.map parseNum
     |> List.sum
-
-parseNum : Str -> Result Nat [ListWasEmpty]
-parseNum = \line ->
-    first <- findFirst line |> Result.try
-    last <- findLast line |> Result.try
-    Ok (first * 10 + last)
 
 digitNames : List (Str, Nat)
 digitNames = [
@@ -50,47 +46,33 @@ digitNames = [
     ("nine", 9),
 ]
 
-findFirst : Str -> Result Nat [ListWasEmpty]
-findFirst = \line ->
+digitNamesUtf8 : List (List U8, Nat)
+digitNamesUtf8 =
     digitNames
-    |> List.keepOks (firstIndexOf line)
-    |> minByFirst
-    |> Result.map \(_, digit) -> digit
+    |> List.map (\(name, digit) -> (Str.toUtf8 name, digit))
 
-findLast : Str -> Result Nat [ListWasEmpty]
-findLast = \line ->
-    digitNames
-    |> List.keepOks (lastIndexOf line)
-    |> minByFirst
-    |> Result.map \(_, digit) -> digit
+parseDigits : List U8 -> List Nat
+parseDigits = \line ->
+    if List.isEmpty line then
+        []
+    else
+        when parseDigit line is
+            (Ok digit, rest) -> parseDigits rest |> List.prepend digit
+            (Err NoDigit, rest) -> parseDigits rest
 
-minByFirst : List (Num a, b) -> Result (Num a, b) [ListWasEmpty]
-minByFirst = \list ->
-    current, (index, digit) <- List.walk list (Err ListWasEmpty)
+parseDigit : List U8 -> (Result Nat [NoDigit], List U8)
+parseDigit = \line ->
+    rest = List.dropFirst line 1
+    result, (prefix, digit) <- List.walkUntil digitNamesUtf8 (Err NoDigit, rest)
 
-    when current is
-        Ok (currentIndex, _) if index >= currentIndex ->
-            current
+    if List.startsWith line prefix then
+        Break (Ok digit, rest)
+    else
+        Continue result
 
-        _ ->
-            Ok (index, digit)
-
-firstIndexOf : Str -> ((Str, Nat) -> Result (Nat, Nat) [NotFound])
-firstIndexOf = \str ->
-    \(name, digit) ->
-        when Str.splitFirst str name is
-            Ok { before } ->
-                Ok (Str.countUtf8Bytes before, digit)
-
-            _ ->
-                Err NotFound
-
-lastIndexOf : Str -> ((Str, Nat) -> Result (Nat, Nat) [NotFound])
-lastIndexOf = \str ->
-    \(name, digit) ->
-        when Str.splitLast str name is
-            Ok { after } ->
-                Ok (Str.countUtf8Bytes after, digit)
-
-            _ ->
-                Err NotFound
+parseNum : List Nat -> Nat
+parseNum = \digits ->
+    when digits is
+        [a, .., b] -> a * 10 + b
+        [a] -> a * 10 + a
+        _ -> crash "Invalid num"

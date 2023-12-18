@@ -1,2 +1,5 @@
 src/day*/*
 !*.roc
+!src/day*/src
+!Cargo.toml
+!Cargo.lock

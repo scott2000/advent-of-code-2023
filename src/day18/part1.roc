@@ -6,8 +6,8 @@ app "advent-of-code"
     imports [
         pf.Stdout,
         pf.Task.{ Task },
-        parser.Core.{ const, keep, skip, oneOf, oneOrMore, chompWhile },
-        parser.String.{ Utf8, parseStr, codeunit, string, digits, strFromUtf8 },
+        parser.Core.{ const, keep, skip, oneOf, oneOrMore, chompUntil },
+        parser.String.{ Utf8, parseStr, codeunit, digits },
         "../../inputs/day18.txt" as inputFile : Str,
     ]
     provides [main] to pf
@@ -23,8 +23,7 @@ Direction : [
 
 Operation : {
     dir : Direction,
-    count : Nat,
-    color : Str,
+    count : I64,
 }
 
 main : Task {} *
@@ -32,9 +31,8 @@ main =
     when parseStr problemParser inputFile is
         Ok problem ->
             problem
-            |> findBorderSets
-            |> findInterior
-            |> Set.len
+            |> getPoints
+            |> getArea
             |> Num.toStr
             |> Stdout.line
 
@@ -50,13 +48,12 @@ problemParser =
 
 operationParser : Parser Operation
 operationParser =
-    const (\dir -> \count -> \color -> { dir, count, color })
+    const (\dir -> \count -> { dir, count: Num.toI64 count })
     |> keep directionParser
     |> skip (codeunit ' ')
     |> keep digits
-    |> skip (string " (")
-    |> keep colorParser
-    |> skip (string ")\n")
+    |> skip (chompUntil '\n')
+    |> skip (codeunit '\n')
 
 directionParser : Parser Direction
 directionParser =
@@ -67,93 +64,41 @@ directionParser =
         const East |> skip (codeunit 'R'),
     ]
 
-colorParser : Parser Str
-colorParser =
-    const strFromUtf8
-    |> skip (codeunit '#')
-    |> keep (chompWhile \ch -> (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))
+Pos : (I64, I64)
 
-Pos : (I32, I32)
+getArea : List Pos -> I64
+getArea = \vertices ->
+    interior = getInteriorArea vertices
+    edgeLength = getEdgeLength vertices
 
-BorderSets a : {
-    border : Set Pos,
-    left : Set Pos,
-    right : Set Pos,
-}a
+    interior + edgeLength // 2 + 1
 
-State : BorderSets {
-    pos : Pos,
-}
+getInteriorArea : List Pos -> I64
+getInteriorArea = \vertices ->
+    vertices
+    |> List.map2 (List.dropFirst vertices 1) \(x1, y1), (x2, y2) ->
+        x1 * y2 - x2 * y1
+    |> List.sum
+    |> Num.abs
+    |> Num.divTrunc 2
 
-findInterior : BorderSets * -> Set Pos
-findInterior = \sets ->
-    left = expand sets.left |> Set.difference sets.border
-    right = expand sets.right |> Set.difference sets.border
+getEdgeLength : List Pos -> I64
+getEdgeLength = \vertices ->
+    vertices
+    |> List.map2 (List.dropFirst vertices 1) \(x1, y1), (x2, y2) ->
+        Num.absDiff x1 x2 + Num.absDiff y1 y2
+    |> List.sum
 
-    if left == sets.left then
-        Set.union sets.border left
-    else if right == sets.right then
-        Set.union sets.border right
-    else
-        findInterior { sets & left, right }
+getPoints : List Operation -> List Pos
+getPoints = \ops ->
+    ops
+    |> List.walk ([(0, 0)], (0, 0)) \(list, (x, y)), op ->
+        next =
+            when op.dir is
+                North -> (x, y - op.count)
+                South -> (x, y + op.count)
+                West -> (x - op.count, y)
+                East -> (x + op.count, y)
 
-expand : Set Pos -> Set Pos
-expand = \set ->
-    Set.joinMap set \(x, y) ->
-        Set.fromList [
-            (x - 1, y),
-            (x + 1, y),
-            (x, y - 1),
-            (x, y + 1),
-        ]
-
-findBorderSets : List Operation -> BorderSets {}
-findBorderSets = \ops ->
-    initialState = {
-        pos: (0, 0),
-        border: Set.single (0, 0),
-        left: Set.empty {},
-        right: Set.empty {},
-    }
-
-    { border, left, right } = List.walk ops initialState applyOperation
-
-    {
-        border,
-        left: Set.difference left border,
-        right: Set.difference right border,
-    }
-
-applyOperation : State, Operation -> State
-applyOperation = \state, op ->
-    applyOperationHelper state op 0
-
-applyOperationHelper : State, Operation, Nat -> State
-applyOperationHelper = \state, op, n ->
-    if n == op.count then
-        state
-    else
-        { next, left, right } = getAdjacent state.pos op.dir
-
-        applyOperationHelper
-            {
-                pos: next,
-                border: Set.insert state.border next,
-                left: Set.insert state.left left,
-                right: Set.insert state.right right,
-            }
-            op
-            (n + 1)
-
-getAdjacent : Pos, Direction -> { next : Pos, left : Pos, right : Pos }
-getAdjacent = \(x, y), dir ->
-    north = (x, y - 1)
-    south = (x, y + 1)
-    west = (x - 1, y)
-    east = (x + 1, y)
-
-    when dir is
-        North -> { next: north, left: west, right: east }
-        South -> { next: south, left: east, right: west }
-        West -> { next: west, left: south, right: north }
-        East -> { next: east, left: north, right: south }
+        (List.append list next, next)
+    |> .0

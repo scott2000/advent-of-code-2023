@@ -7,6 +7,8 @@ there will likely be breaking changes, so this code may not work in the future.
 A few parts were too difficult to do in Roc because of package availability, so
 I did those parts in [Rust] instead. One part also requires [Z3] to be installed.
 
+I was 7359th to complete all 50 stars.
+
 [Advent of Code 2023]: https://adventofcode.com/2023
 [Roc]: https://www.roc-lang.org/
 [Rust]: https://www.rust-lang.org/
